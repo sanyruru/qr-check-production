@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>原料QRラベル発行</title>
-<script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f1eb; padding: 16px; }
@@ -64,7 +64,7 @@ input:focus, select:focus { outline: none; border-color: #2d6a4f; }
   background: #2d6a4f; color: #fff; font-size: 13px; font-weight: 700;
   padding: 8px; border-radius: 8px; margin-bottom: 14px; letter-spacing: .05em;
 }
-#qr-canvas { margin: 0 auto 14px; display: block; }
+#qr-canvas { margin: 0 auto 14px; display: flex; justify-content: center; }
 .label-name { font-size: 18px; font-weight: 900; color: #1a1a1a; margin-bottom: 6px; }
 .label-sub { font-size: 12px; color: #555; margin-bottom: 4px; font-family: monospace; }
 .label-lot { font-size: 13px; font-weight: 700; color: #2d6a4f; margin-top: 6px; }
@@ -116,7 +116,7 @@ input:focus, select:focus { outline: none; border-color: #2d6a4f; }
 <div id="preview">
   <div class="label-preview">
     <div class="label-header">原料 QR ラベル</div>
-    <canvas id="qr-canvas"></canvas>
+    <div id="qr-canvas" style="display:inline-block;"></div>
     <div class="label-name" id="prev-name"></div>
     <hr class="label-divider">
     <div class="label-sub" id="prev-op"></div>
@@ -576,18 +576,25 @@ function generateQR() {
   document.getElementById('prev-date').textContent  = `受入日：${dateDisp}`;
   document.getElementById('prev-lot').textContent   = `ロット：${lot}`;
 
-  // QR生成
-  const canvas = document.getElementById('qr-canvas');
-  QRCode.toCanvas(canvas, qrData, {
-    width: 200, margin: 2,
-    color: { dark: '#000000', light: '#ffffff' }
-  }, err => {
-    if (err) { alert('QR生成エラー: ' + err); return; }
+  // QR生成（qrcodejs を使用）
+  try {
+    const container = document.getElementById('qr-canvas');
+    container.innerHTML = ''; // 前回のQRをクリア
+    new QRCode(container, {
+      text: qrData,
+      width: 200,
+      height: 200,
+      colorDark: '#000000',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.M
+    });
     document.getElementById('preview').style.display = 'block';
     document.getElementById('lot-card').style.display = 'none';
     document.querySelector('.card.no-print').style.display = 'none';
     window.scrollTo(0, 0);
-  });
+  } catch(err) {
+    alert('QR生成エラー: ' + err);
+  }
 }
 
 function resetForm() {
