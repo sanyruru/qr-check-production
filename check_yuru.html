@@ -599,7 +599,7 @@ function computeAmount(code) {
      URL（.../exec で終わるもの）に書き換えてください。
      空欄のままなら何もせず無視されます。
 ───────────────────────────────────────── */
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbyxKWJOx2mx-QHJvN65s0EiXTXPBichqI5QaMST_RA1VDQ__RR9I35d1sOl60eAFmiP3A/exec'; // 例: 'https://script.google.com/macros/s/xxxxx/exec'
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbz6WE4TdvEGCsIPRxMAUC1OWWUxQ5ORr7utzEvR__nW_BefNw29ON6whGmDBNfQxSm7bw/exec'; // 例: 'https://script.google.com/macros/s/xxxxx/exec'
 
 function logToSheet(ingredientName, ingredientCode, result, ingredientAmount) {
   if (!GAS_URL) return; // 未設定なら何もしない
@@ -1734,7 +1734,7 @@ renderWait = function () {
    ★★★ 直したら APP_VERSION も必ず新しくすること ★★★
    このすぐ下の行です。変え忘れると現場の端末が更新されません。
    ══════════════════════════════════════════════════════ */
-const APP_VERSION = 'v3.8 (2026-09-05)';
+const APP_VERSION = 'v3.9 (2026-09-05)';
 
 /* ─── 版数の表示 ───────────────────────────────────────
    端末が古いページをキャッシュしていないか、目で確かめるための表示。 */
