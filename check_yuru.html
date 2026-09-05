@@ -611,7 +611,9 @@ function logToSheet(ingredientName, ingredientCode, result, ingredientAmount) {
     ingredientName,
     ingredientCode,
     ingredientAmount: ingredientAmount || '',
-    result
+    result,
+    lotNumber:   window._lastScanLot  || '',
+    receiveDate: window._lastScanRecv || ''
   };
   // GASのウェブアプリはCORSに対応していないため mode:'no-cors' で送信
   // （送信結果は読み取れないが、記録自体は正常に行われる）
@@ -841,8 +843,22 @@ function extractCodeFromScan(decodedText) {
   try {
     const url = new URL(decodedText);
     const d = url.searchParams.get('d');
-    if (d) return d.trim();
+    if (d) {
+      // ロット番号・受入日もURLパラメータから取得して保持する
+      const lot  = url.searchParams.get('lot')  || '';
+      const recv = url.searchParams.get('recv') || '';
+      if (lot || recv) {
+        window._lastScanLot  = lot;
+        window._lastScanRecv = recv;
+      } else {
+        window._lastScanLot  = '';
+        window._lastScanRecv = '';
+      }
+      return d.trim();
+    }
   } catch (e) {}
+  window._lastScanLot  = '';
+  window._lastScanRecv = '';
   return decodedText.trim();
 }
 
@@ -1718,7 +1734,7 @@ renderWait = function () {
    ★★★ 直したら APP_VERSION も必ず新しくすること ★★★
    このすぐ下の行です。変え忘れると現場の端末が更新されません。
    ══════════════════════════════════════════════════════ */
-const APP_VERSION = 'v3.6 (2026-08-27)';
+const APP_VERSION = 'v3.8 (2026-09-05)';
 
 /* ─── 版数の表示 ───────────────────────────────────────
    端末が古いページをキャッシュしていないか、目で確かめるための表示。 */
