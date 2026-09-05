@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>原料QRラベル発行</title>
+<script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Helvetica Neue', Arial, sans-serif; background: #f4f1eb; padding: 16px; }
+
+.header { text-align: center; margin-bottom: 20px; }
+.header-brand { font-size: 11px; letter-spacing: .2em; color: #888; margin-bottom: 4px; }
+.header-title { font-size: 20px; font-weight: 700; color: #2d6a4f; }
+
+.card { background: #fff; border-radius: 14px; padding: 18px; border: 1px solid #e0dbd0; margin-bottom: 16px; }
+.card-title { font-size: 11px; font-weight: 700; letter-spacing: .15em; color: #888; margin-bottom: 14px; }
+
+label { display: block; font-size: 12px; color: #555; margin-bottom: 4px; }
+input, select {
+  width: 100%; padding: 12px; font-size: 15px;
+  border: 1.5px solid #e0dbd0; border-radius: 10px;
+  margin-bottom: 14px; -webkit-appearance: none;
+  background: #fff;
+}
+input:focus, select:focus { outline: none; border-color: #2d6a4f; }
+
+.search-wrap { position: relative; }
+#searchInput { margin-bottom: 4px; }
+#dropdown {
+  display: none; position: absolute; top: 100%; left: 0; right: 0;
+  background: #fff; border: 1.5px solid #2d6a4f; border-radius: 10px;
+  max-height: 240px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.drop-item {
+  padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0ede8; font-size: 13px;
+}
+.drop-item:last-child { border-bottom: none; }
+.drop-item:hover, .drop-item.active { background: #e8f6ec; }
+.drop-op { font-size: 11px; color: #888; margin-left: 6px; font-family: monospace; }
+
+.info-row { display: flex; justify-content: space-between; padding: 7px 0;
+  border-bottom: 1px solid #f0ede8; font-size: 13px; }
+.info-row:last-child { border-bottom: none; }
+.info-label { color: #888; }
+.info-value { font-weight: 600; color: #1a1a1a; font-family: monospace; }
+
+.btn { width: 100%; padding: 16px; background: #2d6a4f; border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 700; color: #fff; cursor: pointer; margin-bottom: 8px;
+  -webkit-appearance: none; }
+.btn:disabled { background: #ccc; cursor: not-allowed; }
+.btn-print { background: #1a5276; }
+.btn-reset { background: #fff; border: 2px solid #e0dbd0; color: #888;
+  font-size: 14px; font-weight: 500; }
+
+/* プレビューエリア */
+#preview { display: none; }
+.label-preview {
+  background: #fff; border: 2px solid #2d6a4f; border-radius: 14px;
+  padding: 16px; text-align: center; margin-bottom: 16px;
+}
+.label-header {
+  background: #2d6a4f; color: #fff; font-size: 13px; font-weight: 700;
+  padding: 8px; border-radius: 8px; margin-bottom: 14px; letter-spacing: .05em;
+}
+#qr-canvas { margin: 0 auto 14px; display: block; }
+.label-name { font-size: 18px; font-weight: 900; color: #1a1a1a; margin-bottom: 6px; }
+.label-sub { font-size: 12px; color: #555; margin-bottom: 4px; font-family: monospace; }
+.label-lot { font-size: 13px; font-weight: 700; color: #2d6a4f; margin-top: 6px; }
+.label-divider { border: none; border-top: 1px solid #e0dbd0; margin: 10px 0; }
+.label-url { font-size: 9px; color: #aaa; word-break: break-all; }
+
+/* 印刷スタイル */
+@media print {
+  body { background: #fff; padding: 0; }
+  .no-print { display: none !important; }
+  #preview { display: block !important; }
+  .label-preview {
+    border: 1px solid #999; page-break-inside: avoid;
+    width: 80mm; margin: 0 auto;
+  }
+}
+</style>
+</head>
+<body>
+
+<div class="header no-print">
+  <div class="header-brand">原料管理システム</div>
+  <div class="header-title">原料QRラベル発行</div>
+</div>
+
+<div class="card no-print">
+  <div class="card-title">① 原料を選ぶ</div>
+  <div class="search-wrap">
+    <label>原料名またはOPコードで検索</label>
+    <input type="text" id="searchInput" placeholder="例：スクワラン / 00135" autocomplete="off">
+    <div id="dropdown"></div>
+  </div>
+  <div id="selected-info" style="display:none;">
+    <div class="info-row"><span class="info-label">原料名</span><span class="info-value" id="sel-name">-</span></div>
+    <div class="info-row"><span class="info-label">OPコード</span><span class="info-value" id="sel-op">-</span></div>
+    <div class="info-row"><span class="info-label">棚番</span><span class="info-value" id="sel-shelf">-</span></div>
+  </div>
+</div>
+
+<div class="card no-print" id="lot-card" style="display:none;">
+  <div class="card-title">② ロット番号・受入日を入力</div>
+  <label>受入日</label>
+  <input type="date" id="inputDate">
+  <label>ロット番号</label>
+  <input type="text" id="inputLot" placeholder="例：2026-08-001">
+  <button class="btn" id="generateBtn" onclick="generateQR()">QRラベルを生成する</button>
+</div>
+
+<div id="preview">
+  <div class="label-preview">
+    <div class="label-header">原料 QR ラベル</div>
+    <canvas id="qr-canvas"></canvas>
+    <div class="label-name" id="prev-name"></div>
+    <hr class="label-divider">
+    <div class="label-sub" id="prev-op"></div>
+    <div class="label-sub" id="prev-shelf"></div>
+    <div class="label-lot" id="prev-date"></div>
+    <div class="label-lot" id="prev-lot"></div>
+    <hr class="label-divider">
+    <div class="label-url">https://sanyruru.github.io/qr-check-production/check_yuru.html</div>
+  </div>
+  <button class="btn btn-print no-print" onclick="window.print()">🖨️ このラベルを印刷する</button>
+  <button class="btn btn-reset no-print" onclick="resetForm()">↩️ 別の原料を発行する</button>
+</div>
+
+<script>
+const INGREDIENTS = [
+  ['00001', 'BG（1，3-ブチレングリコール）', '1-3-4'],
+  ['00002', 'ACポリエチレン6A', '7-5-1'],
+  ['00004', 'BHT-C', '6-2-1'],
+  ['00008', 'パンテテイン-S-スルホン酸Ca70', '7-4-2'],
+  ['00012', 'FMエキス', '12'],
+  ['00013', 'HPC-M', '3-0-3'],
+  ['00014', 'エキセパールIPM', '5-3-4'],
+  ['00015', 'アスコルビン酸ＰＭ', '7-0-3'],
+  ['00016', 'L-アスパラギン酸Na', '4-1-1'],
+  ['00017', 'L-アルギニン', '6-2-2'],
+  ['00018', 'L-スレオニン', '4-3-1'],
+  ['00019', 'L-セリン', '4-2-1'],
+  ['00020', 'L-ヒドロキシプロリン', '4-2-10'],
+  ['00021', 'タイポールDBT-36', '2-5-3'],
+  ['00022', 'MOD', '2-3-1'],
+  ['00023', 'NAA-142', '7-4-3'],
+  ['00024', 'ODO', '2-3-3'],
+  ['00025', 'AJIDEWN-50', '6-4-6'],
+  ['00027', 'PEG4000', '3-5-6'],
+  ['00031', 'ＴＩＯ', '1-3-1'],
+  ['00032', 'ルブラジェルNP', 'B'],
+  ['00035', 'β-カロチン', '13'],
+  ['00036', 'メッキンスB', '2-2-2'],
+  ['00037', 'PEG1500〈CW1500〉', '1-5-3'],
+  ['00038', '3－サクシニルオキシグリチルレチン酸2Na', '4-3-3'],
+  ['00039', 'ファインガムSA-M', 'A'],
+  ['00040', 'GenencareOSMSBA', '3-3-1'],
+  ['00043', '精製アボカド油', 'A'],
+  ['00044', 'アミソフトLS-11（F）', '3-5-5'],
+  ['00049', 'アラントイン', '4-3-2'],
+  ['00052', 'アルゲコロイド', '3-1-11'],
+  ['00053', 'アロエ抽出リキッドBG', '12'],
+  ['00056', '天然ビタミンE', '12'],
+  ['00058', 'イプシロンアミノカプロニ酸', '7-1-8'],
+  ['00059', 'EXTRAPONEWITCHHAZEL-EXTRACT', '6-3-1'],
+  ['00061', 'エキセル84', '7-4-4'],
+  ['00062', 'エステモールN-01', '6-3-3'],
+  ['00066', 'エマール20C', '2-5-2'],
+  ['00068', 'エマレックスTEG-dｉ-Ｓ', '7-4-6'],
+  ['00070', 'エマレックスＧＭＳ-ＡＳＥ', '3-3-3'],
+  ['00073', 'EutanolG-JP', '7-1-10'],
+  ['00074', 'オウゴンリキッドSE', '4-3-4'],
+  ['00075', 'オスモスN', '6-4-1'],
+  ['00077', 'カミツレ抽出液BG', '12'],
+  ['00078', 'カミツレ抽出液ＨＳ', '1-1-3'],
+  ['00082', 'カロットオイル', '12'],
+  ['00084', 'γ-オリザノール（A末）', '6-2-5'],
+  ['00086', 'クエン酸', '4-1-4'],
+  ['00087', 'クエン酸Na', '4-1-8'],
+  ['00088', 'クチナMD', '6-2-6'],
+  ['00091', 'クレワットN', '3-0-4'],
+  ['00094', 'グアイアズレン（25％）', '12'],
+  ['00095', '濃グリセリン', '1-3-5'],
+  ['00096', 'グリチルリチン酸ジカリウム', '4-2-2'],
+  ['00098', 'グルカムE-10', '7-4-1'],
+  ['00099', 'グルタチオン', '7-0-7'],
+  ['00103', 'コスモール168AR', '5-3-7'],
+  ['00104', 'コスモール222', '2-4-3'],
+  ['00105', 'コスモール525', '2-3-2'],
+  ['00107', '西洋菩提樹抽出液HS', '12'],
+  ['00111', 'クラレポバール46-88LLA', '8-5-6'],
+  ['00113', 'SR-ビーズワックス-PA-（JP）', '3-4-3'],
+  ['00114', 'クチナシ濃縮エキス', '7-0-8'],
+  ['00115', 'コレステロールJSQI', '7-0-1'],
+  ['00117', '粉末カラメル ＭＧ-１８Ｗ', '10'],
+  ['00120', 'サラコスHS', '4-5-5'],
+  ['00122', 'サンソフトNo,118・C', '3-4-4'],
+  ['00125', 'CO-グレチノール（100g入り）', '3-2-6'],
+  ['00126', 'ビオデルマSX-19（E）', '1-1-5'],
+  ['00130', 'シリコンＫＦ96（300ＣＳ）', '1-3-3'],
+  ['00132', 'シルクゲンGソルブル', '7-2-2'],
+  ['00133', 'ジオウ抽出液BG', '12'],
+  ['00134', 'ジグリセリン801', '2-4-1'],
+  ['00135', 'スクワラン', '1-3-2'],
+  ['00136', '精製ステアリン酸700V', '3-4-1'],
+  ['00141', 'ニッコールCA2465', 'C'],
+  ['00143', 'サルビア抽出液HS', '7-1-6'],
+  ['00144', 'カルコール6098', '3-4-2'],
+  ['00149', 'ソウハクヒエキス白糖末', 'H'],
+  ['00152', 'サンファクトO-183', '6-3-2'],
+  ['00153', 'サラコス99', '2-3-5'],
+  ['00154', 'タイソウリキッド', '5-2-2'],
+  ['00157', 'チンピ抽出液BG', '12'],
+  ['00158', 'テゴ-51（30％）', '6-1-5'],
+  ['00159', 'テシットデシチン', '1-1-2'],
+  ['00160', 'デヒドロ酢酸ナトリウム', '3-2-3'],
+  ['00164', 'ナポーリンA', '7-1-2'],
+  ['00172', 'CDS-6000', '8-4-5'],
+  ['00175', 'HCO-60', '1-1-1'],
+  ['00176', 'ニッコールLMT', '4-4-4'],
+  ['00186', 'サルコシネートLN', '4-4-5'],
+  ['00188', 'メキンスM', '3-2-4'],
+  ['00192', 'ハイアズレン', '3-0-5'],
+  ['00194', 'バチルアルコールＥＸ', '3-2-5'],
+  ['00197', 'パラソール1789', '7-0-4'],
+  ['00198', 'ヒアルロン酸NaHA-Q', '7-2-5'],
+  ['00199', 'イソプロピルメチルフェノール', '3-2-1'],
+  ['00203', 'ピロテルCPI-40', '6-5-3'],
+  ['00204', 'ピロテルGPI-25', 'C'],
+  ['00209', 'プロモイスECT', 'C'],
+  ['00217', 'ベヘニルアルコール65', '3-4-5'],
+  ['00222', 'ホホバアルコール', '6-1-9'],
+  ['00223', '精製ホホバ油', '1-4-3'],
+  ['00227', 'マイクロスフェアーM-100', '4-4-1'],
+  ['00228', 'アマルティシロップ', '1-4-1'],
+  ['00229', 'マルメロE', 'Ａ'],
+  ['00230', 'マロニエエキスEP-20', '5-2-4'],
+  ['00232', 'ミラノールC2M-NPHV', '1-B'],
+  ['00235', 'ムクロジエキスパウダー', '5-1-9'],
+  ['00236', 'L（-）-メントール（和光純薬132－03752）', '8-1-1'],
+  ['00244', 'ヨークオイルC', '12'],
+  ['00245', 'ヨクイニンリキッドB', '12'],
+  ['00252', 'ビタミンB2', '7-1-11'],
+  ['00253', 'リンゴ酸Na', '5-1-8'],
+  ['00254', 'ルチン', '7-0-5'],
+  ['00260', 'レオドールAO-15V', '7-3-1'],
+  ['00262', 'レオドールYW－L120', '5-2-5'],
+  ['00278', 'ピオニン<感光素201>', '10'],
+  ['00280', 'ルミカーナ<感光素401>', '10'],
+  ['00281', 'プラルミン<感光素NK-143>', '10'],
+  ['00282', 'リコレックスNa－P', 'Ｈ'],
+  ['00284', '黒砂糖', 'J'],
+  ['00286', 'H,F,WHEATGERM（小麦胚芽油）', '6-1-7'],
+  ['00296', 'パールカルク抽出液（1㎏入り容器）', '12'],
+  ['00297', 'トコフェロール酢酸エステル', '2-1-4'],
+  ['00298', '水酸化カリウム-特級', '9'],
+  ['00303', '尿素（昭和電工製）', '3-5-1'],
+  ['00305', '油溶性甘草エキスPT-40', '12'],
+  ['00309', '緑茶リキッド', '3-0-7'],
+  ['00310', 'オリゴⅢ', '4-2-3'],
+  ['00311', 'バイオレット（小麦粉）', 'J'],
+  ['00312', 'スキムミルク（脱脂粉乳）', '13'],
+  ['00313', 'コーンスターチ', 'J'],
+  ['00315', 'ニンジン抽出液BG', '12'],
+  ['00318', 'ローヤルゼリー抽出液BG', '12'],
+  ['00326', 'エマレックス102', '2-1-3'],
+  ['00328', 'カラミンL80-1', 'J'],
+  ['00329', 'グアイアズレン（粉末）', '12'],
+  ['00333', 'L-シスチン（和光037-05292）', '7-1-7'],
+  ['00336', 'シャクヤク抽出液', '12'],
+  ['00343', 'ニッコールMYS-55', '3-3-7'],
+  ['00355', 'ニンジン抽出液ＳＯ', '7-1-4'],
+  ['00360', 'カプラー1310－Ｃ', 'Ｌ'],
+  ['00363', 'サラコス913', '1-4-4'],
+  ['00366', 'カミツレ抽出液', '12'],
+  ['00370', 'AT-8230', '8-1-2'],
+  ['00382', 'Cosmodor2568－6', '8-1-3'],
+  ['00442', 'シャンプーM-8074', '8-1-4'],
+  ['00453', 'スペアミントX-6026', '8-1-5'],
+  ['00474', 'ファンデーションM4836', '8-1-6'],
+  ['00489', 'フローラルSKD46', '8-1-7'],
+  ['00501', 'ミスローション045－524', '8-1-8'],
+  ['00524', '酸化チタンＫＡ－10', 'J'],
+  ['00540', '水酸化ナトリウム-特級', '9'],
+  ['00550', '塩化ナトリウム（試薬1級）（和光198-01675）', '3-1-13'],
+  ['00597', 'インフラン-AT', '12'],
+  ['00598', 'オリゼノーブル', '12'],
+  ['00618', 'L-メチオニン', '4-1-6'],
+  ['00619', 'ゴボウ抽出液BG', '12'],
+  ['00621', 'AT-8224', '8-1-10'],
+  ['00638', '5％ベンガラ', '6-1-6'],
+  ['00639', 'アスパラサスリネアリス（エタノール5倍希釈液）', '12'],
+  ['00641', '金箔花', '7-1-12'],
+  ['00702', '酸化チタンTTO-55C', '7-5-4'],
+  ['00703', '酸化チタンTTO-D2', '8-4-6'],
+  ['00714', 'ククラSK', '12'],
+  ['00717', 'レオドールSP-S10V', '3-5-2'],
+  ['00733', 'シリコンBY11-007', '6-5-4'],
+  ['00738', 'アミライトACT-12', '2-5-5'],
+  ['00746', 'リポフローMN', '7-0-2'],
+  ['00760', 'サンホワイトP-200', '4-5-2'],
+  ['00762', 'スキンケアーSKD-18C', '8-1-11'],
+  ['00767', 'グレープフルーツ抽出液', '12'],
+  ['00768', 'ホモフルーツピーチ/N', '7-2-8'],
+  ['00769', '桃葉エキス', '12'],
+  ['00770', 'L(+）アスコルビン酸（和光016-0480）', '7-2-6'],
+  ['00780', 'シルクゲンGソルブルS30B', '6-1-8'],
+  ['00783', 'ペムレンTR-1', '6-3-5'],
+  ['00784', 'ローマカミツレ油', '8-2-2'],
+  ['00785', 'ABIL EM90', 'J'],
+  ['00786', 'タイペーク ＴＴＯ-５１Ａ', 'J'],
+  ['00787', 'チタンTTO-51A（シリコン処理OL)', 'J'],
+  ['00790', '微粒子酸化亜鉛FINEX-52W-LP2', 'Ｈ'],
+  ['00795', 'ユキノシタMB', '4-3-9'],
+  ['00802', 'オーデアロマグレープ', '5-3-8'],
+  ['00803', 'フラボステロンSB', '5-2-10'],
+  ['00804', 'カッコンB', '5-2-6'],
+  ['00806', 'エイジツ抽出リキッド', '12'],
+  ['00807', 'トルマリン粉体', 'J'],
+  ['00808', 'ハイレッドG-150', '12'],
+  ['00810', 'FururalBouquetM-6412', '8-2-5'],
+  ['00812', 'チタン・亜鉛撥水処理液－B', 'F'],
+  ['00825', 'トレーサブル95 特級', '-'],
+  ['00828', 'ビォファルコPQ-1', '12'],
+  ['00829', 'ファルコニックスPC-1', '12'],
+  ['00831', 'ファルコレックスマツB', '12'],
+  ['00842', 'プロモイスW－32', '2-3-4'],
+  ['00848', 'マリコールCLR', '12'],
+  ['00852', 'AS-G', '7-5-2'],
+  ['00853', 'エメラス', '7-2-7'],
+  ['00854', 'グレイスノウ＊雪＊HP', '4-1-3'],
+  ['00855', 'ユズ抽出液-J', '12'],
+  ['00856', 'ファルコレックスキイチゴB', '5-2-7'],
+  ['00857', 'ヒバ油', '5-2-8'],
+  ['00858', 'クロダモルDES-LQ（JP）', '5-3-2'],
+  ['00859', 'エマレックス810', '4-5-6'],
+  ['00860', 'ウッディーローションMA-1552', '8-2-6'],
+  ['00861', 'スパーラノハイドロ-SO-（JP）', '6-5-2'],
+  ['00862', 'ノボル-NV-LQ-（JP）', '2-2-4'],
+  ['00865', 'ホワイトローションM-7071', '8-2-7'],
+  ['00866', 'レオドールTW-S120V', '2-4-2'],
+  ['00867', 'フェノキシエタノール', '1-1-7'],
+  ['00868', 'アルカシーラン', '12'],
+  ['00869', 'パールカルク抽出液-S', '研究原料'],
+  ['00870', 'コンキオリン発酵液', '12'],
+  ['00875', 'NAA-122', '4-4-3'],
+  ['00876', 'NAA-160', '7-4-5'],
+  ['00878', '薄荷白油', '7-2-10'],
+  ['00879', 'LTS-P50M（食添D-ソルビトール）', '4-4-2'],
+  ['00880', 'サンフレッシュST-500MPSA', '6-4-5'],
+  ['00881', 'シマルゲルEG', '4-3-5'],
+  ['00883', 'メトローズ60SH-4000', '6-1-4'],
+  ['00889', 'レイシ抽出液LA', '12'],
+  ['00892', 'ウワウルシ流エキス', '7-0-9'],
+  ['00893', 'ウコン油', '2-1-6'],
+  ['00894', 'ウコン－S', '2-1-7'],
+  ['00897', 'リノール酸（和光128-03611100mL）', '12'],
+  ['00898', 'サラコスP-8', '5-5-1'],
+  ['00899', 'サラコス5408', '5-5-2'],
+  ['00900', 'サラコスPG-218', '5-5-3'],
+  ['00901', 'サラコスDG-158', '5-5-4'],
+  ['00902', 'YＯＦＣＯ ＣＬＣ-678', '品質管理課'],
+  ['00903', 'YＯＦＣＯ ＬＣ-ＣＯ-Ｄ', '品質管理課'],
+  ['00905', 'シリコンDC-246', 'A'],
+  ['00906', 'エルデュウPS-203', '4-2-6'],
+  ['00907', 'KMO-6', '1-1-6'],
+  ['00908', 'エリスリト－ル', 'A'],
+  ['00909', 'エキセルT-95', 'A'],
+  ['00910', 'シリコンKF96A-20cs', '2-2-3'],
+  ['00911', 'エマレックスGWIS-160EX', '6-1-1'],
+  ['00912', 'エマレックスGM-5', '4-5-1'],
+  ['00913', 'メタリン酸Na（和光199-08165）', '4-1-5'],
+  ['00914', 'カーボポール981', '2-1-2'],
+  ['00920', 'フェリオックス115A', '8-4-7'],
+  ['00921', 'メドホーム油', '1-1-4'],
+  ['00923', 'PPUKD発酵液-O', '3-0-1'],
+  ['00924', 'PUKD発酵液-S', '4-1-7'],
+  ['00926', 'SkinCareM-7588', '8-2-9'],
+  ['00927', 'ヨモギ発酵液-S', '4-2-7'],
+  ['00928', 'シリコンBY29-129', 'A'],
+  ['00930', 'RoseABS（Bulgaria）', '8-2-10'],
+  ['00931', 'GeraniumChinaHE', '8-2-11'],
+  ['00932', '卵黄レシチンＰＬ－１00Ｐ', '12'],
+  ['00933', '卵黄リゾレシチンＬＰＣ-1', '12'],
+  ['00934', 'イソプレングリコールS', '8-4-8'],
+  ['00936', 'カルコール6870', '7-3-5'],
+  ['00937', 'セタノール（セタノール＃2500）', '7-3-6'],
+  ['00940', 'パールカルク抽出液-Ｓ2', '12'],
+  ['00942', '脱臭紺晒密蝋', '3-5-4'],
+  ['00943', 'ノムコートHP-30', '2-5-4'],
+  ['00944', 'サラコス816（L）', '5-5-5'],
+  ['00945', 'ハイドロネクチンＫ1', '12'],
+  ['00947', '油溶性甘草エキスＨＧ', '12'],
+  ['00948', 'リムベールＨＶ', '12'],
+  ['00949', 'シソエキスＮＡ', '12'],
+  ['00950', 'ニッコールＶＣ-ＩＰ', '12'],
+  ['00951', 'クレアージュ', '12'],
+  ['00952', 'ニッコールトコレチノエート-10', '12'],
+  ['00954', 'セピプラス400', '5-1-10'],
+  ['00955', 'エキセルS-95', '7-5-3'],
+  ['00957', 'スキンケアーM-7924', '8-3-2'],
+  ['00959', 'FLUILANSP-LQ-（JP）', '6-3-6'],
+  ['00960', 'アルジレリンソリューション', '3-2-10'],
+  ['00961', 'αGG-L', '4-1-9'],
+  ['00962', 'AMADORINE', '3-2-8'],
+  ['00963', 'ロナケアエクトイン', '12'],
+  ['00966', '天然ヒノキチオール', '12'],
+  ['00967', 'シリコンBY22-055', 'A'],
+  ['00969', 'シリコンCB-1002', '6-5-1'],
+  ['00977', 'SaffronGL', '3-0-8'],
+  ['00978', '米胚芽油（ＰＲＯ-15）', '12'],
+  ['00979', '黒真珠混合植物液Ａ-Ｓ', '12'],
+  ['00980', 'HeebalPVRelax301/V-1', '8-3-3'],
+  ['00982', 'ハス胚芽抽出液BG-05', '4-1-12'],
+  ['00983', 'ファーメントゲモテラピー', '12'],
+  ['00984', 'エナジーソームＱ10', '12'],
+  ['00985', 'ＴＨＩＯＴＡＩＮＥ', '12'],
+  ['00986', 'RJ-パウダーA-S', '3-2-9'],
+  ['00987', 'RJパウダーB-S', '3-0-11'],
+  ['00988', 'ザクロ果実抽出液Ｂ', '12'],
+  ['00989', 'ＳＬＰ-ペーストＳＰ', '12'],
+  ['00990', 'RoseKH-2265', '8-3-5'],
+  ['00991', 'グラフローM', 'L'],
+  ['00992', 'DL-アラニン協和', 'L'],
+  ['00993', 'RJパウダーC-S', '3-0-9'],
+  ['00994', 'ＴＨＹＭＵＬＥＮ-4ＢＧ', '12'],
+  ['00995', '卵黄レシチン処理液-Ｓ', '12'],
+  ['00996', 'ラナクリス', '3-0-12'],
+  ['00997', 'ホメオスーズ', '3-0-10'],
+  ['00998', 'ＴＥＡＲＯＳＥ7946-2', '8-3-6'],
+  ['01000', 'ＥＰＳＳＥＡＦＩＬＬＰ', '12'],
+  ['01001', 'INYLINESOLUTION', '12'],
+  ['01002', 'Unisurrection', '12'],
+  ['01003', 'ファルコレックスエンメイソウB', '7-2-3'],
+  ['01004', 'ナールスゲン（1％溶液）', '12'],
+  ['01005', 'RejulneBG', '12'],
+  ['01006', 'アミトースHGA', '12'],
+  ['01007', 'アミトースDGA', '12'],
+  ['01008', 'フォーミスキンBT-G', '7-3-2'],
+  ['01009', 'ヒアロオリゴ', '7-3-4'],
+  ['01010', 'SEPIMAXZEN', '7-2-4'],
+  ['01011', 'ダーマベール', '12'],
+  ['01012', 'ヒアルロン酸HA-LQ', '4-2-5'],
+  ['01013', 'd-δ-トコフェロール', '12'],
+  ['01014', 'エマレックスCS-24', '5-1-3'],
+  ['01015', 'エマレックス630', '5-1-7'],
+  ['01016', 'PERFUMERY OP-004', '8-3-7'],
+  ['01017', 'アミゾールLDE-G', '3-3-6'],
+  ['01020', 'SフェイスL－1001', '1-5-2'],
+  ['01021', 'Ceracute－L', '5-1-2'],
+  ['01022', 'エマレックスEG－di－S', '7-5-5'],
+  ['01023', 'GlucamateDOE－120Thickener', '6-2-3'],
+  ['01024', 'ノニオンLT－280', '7-5-6'],
+  ['01025', 'ソフタゾリンLPB－R', '4-5-3'],
+  ['01026', 'アラノンALE', '4-5-4'],
+  ['01207', 'カチナールCG－100LD', '6-2-4'],
+  ['01028', 'ルナホワイトB', '12'],
+  ['01030', 'ニューポールPP－2000', '5-3-5'],
+  ['01031', 'PERFUMERY OP-006', '8-3-9'],
+  ['01032', 'スイート アルモンド 油', '12'],
+  ['01033', '十勝バーチ（PF）', '5-4-1'],
+  ['01034', 'DPG', '5-4-2'],
+  ['01035', '無水リン酸－水素ナトリウム 和光 048-29665', '5-1-4'],
+  ['01036', 'リン酸二水素ナトリウム 和光196-13685', '5-1-5'],
+  ['01037', 'ニッコールHCO－20', '5-4-3'],
+  ['01038', 'パルソール340', '5-4-4'],
+  ['01039', 'ノムコートTAB', '5-4-5'],
+  ['01040', 'パルソールHS', '8-5-4'],
+  ['01041', 'オウゴンリキッドB', '5-4-6'],
+  ['01042', 'プリンセスケア', '5-4-7'],
+  ['01044', 'αGルチン ＰＳ-Ｃ', '4-2-11'],
+  ['01045', 'クエン酸（食品添加物）', '3-1-1'],
+  ['01046', 'クエン酸三ナトリウム（食品添加物）', '3-1-10'],
+  ['01047', '水溶性プラセンタエキス ＶＳＦ-Ｎ１', '1-13'],
+  ['01048', 'Ｆｒａｇｒａｎｃｅ ＫＦ-1889', '8-3-10'],
+  ['01049', 'オーディーエイト', '3-1-12'],
+  ['01050', 'センシバ ＳＣ－50ＪＰ', '3-0-6'],
+  ['01051', 'レオガードGP', 'B'],
+  ['01052', 'トレナーレ', '7-1-9'],
+  ['01054', 'CＧ-ＴＧＰ（500ｐｐｍ）', '12'],
+  ['01055', 'ＳＵＢＬＩＳＫＩＮ', '12'],
+  ['01056', 'Ｌｉｐｏｂｅｌｌｅ Ｇｌａｃｉｅｒ', '12'],
+  ['01057', 'プロテオグリカン ＩＰＣ', '12'],
+  ['01059', 'Ｌａｖｅｎｄｅｒ ｏｉｌ', '8-4-1'],
+  ['01060', 'Ｏｒａｎｇｅ ｏｉｌ Ｂｒａｚｉｌ', '8-4-2'],
+  ['01061', 'フランキンセンス', '8-4-3'],
+  ['01062', 'ＭＰ-1133ＷＰ', '2-1-1'],
+  ['01063', 'マンダリンクリア', '3-1-2'],
+  ['01064', 'ケイヒ抽出液W-LA', '3-1-3'],
+  ['01065', 'トレハロース（化粧品）', '3-3-2'],
+  ['01066', 'アクアソーム ＶＡ', '1-12'],
+  ['01068', 'ＤＯＷＳＩＬ（ＴＭ）ＳＨ245 Ｆｉｕｉｄ', '1-4-2'],
+  ['01072', 'カルコール8098', '2-4-4'],
+  ['01073', '化粧品用プルラン', '4-4-6'],
+  ['01074', 'シコニックスリキッド ＢＧ', '3-1-4'],
+  ['01076', 'ネオソリューアクリオ', '2-2-5'],
+  ['01078', 'ガムクリスタル（キサンタンガム）', '2-1-8'],
+  ['01079', 'ＳＹグリスター ＭＯ-7Ｓ', '1-5-5'],
+  ['01080', 'ＥＭＡＬＥＸ ＧＷＩＳ-320ＥＸ', '2-5-1'],
+  ['01081', 'クロピュア ＯＬ-ＬＱ-（ＪＰ）', '2-2-6'],
+  ['01085', 'ファルコニックス エイジツ Ｂ', '3-1-5'],
+  ['01086', 'ファルコニックス シャクヤク Ｂ', '3-1-6'],
+  ['01087', 'ファルコニックス ソウハクヒ Ｂ', '3-1-7'],
+  ['01088', 'ファルコニックス トウキ Ｂ', '3-1-8'],
+  ['01089', 'ファルコニックス ボタンピ Ｂ', '3-1-9'],
+  ['01090', 'カスターワックス Ａフレーク', '2-4-5'],
+  ['01092', 'ＭＥＲＱＵＡＴ 280 ポリマー', '2-2-7'],
+  ['01093', 'Ｓフェイス ＩＳ-202Ｐ', '2-2-8']
+];
+// 今日の日付をデフォルトにセット
+document.getElementById('inputDate').value = new Date().toISOString().slice(0, 10);
+
+let selectedIngredient = null;
+
+// 検索・ドロップダウン
+const searchInput = document.getElementById('searchInput');
+const dropdown = document.getElementById('dropdown');
+
+searchInput.addEventListener('input', function () {
+  const q = this.value.trim().toLowerCase();
+  if (!q) { dropdown.style.display = 'none'; return; }
+
+  const matches = INGREDIENTS.filter(([op, name]) =>
+    name.toLowerCase().includes(q) || op.includes(q)
+  ).slice(0, 20);
+
+  if (!matches.length) { dropdown.style.display = 'none'; return; }
+
+  dropdown.innerHTML = matches.map(([op, name, shelf]) =>
+    `<div class="drop-item" onclick="selectItem('${op}','${name.replace(/'/g,"\\'")}','${shelf}')">
+      ${name}<span class="drop-op">${op}</span>
+    </div>`
+  ).join('');
+  dropdown.style.display = 'block';
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap')) dropdown.style.display = 'none';
+});
+
+function selectItem(op, name, shelf) {
+  selectedIngredient = { op, name, shelf };
+  searchInput.value = name;
+  dropdown.style.display = 'none';
+
+  document.getElementById('sel-name').textContent = name;
+  document.getElementById('sel-op').textContent = op;
+  document.getElementById('sel-shelf').textContent = shelf;
+  document.getElementById('selected-info').style.display = 'block';
+  document.getElementById('lot-card').style.display = 'block';
+}
+
+function generateQR() {
+  if (!selectedIngredient) return;
+  const date = document.getElementById('inputDate').value;
+  const lot  = document.getElementById('inputLot').value.trim();
+
+  if (!date) { alert('受入日を入力してください'); return; }
+  if (!lot)  { alert('ロット番号を入力してください'); return; }
+
+  const { op, name, shelf } = selectedIngredient;
+  const dateDisp = date.replace(/-/g, '/');
+
+  // QRの中身：OPコード・受入日・ロット番号を含むURL形式
+  // アプリ側でこれらの情報を読み取ってスプレッドシートに記録できるようにする
+  const qrData = `https://sanyruru.github.io/qr-check-production/check_yuru.html?d=${op}&lot=${encodeURIComponent(lot)}&recv=${date}`;
+
+  // プレビューに表示
+  document.getElementById('prev-name').textContent = name;
+  document.getElementById('prev-op').textContent   = `OPコード：${op}`;
+  document.getElementById('prev-shelf').textContent = `棚：${shelf}`;
+  document.getElementById('prev-date').textContent  = `受入日：${dateDisp}`;
+  document.getElementById('prev-lot').textContent   = `ロット：${lot}`;
+
+  // QR生成
+  const canvas = document.getElementById('qr-canvas');
+  QRCode.toCanvas(canvas, qrData, {
+    width: 200, margin: 2,
+    color: { dark: '#000000', light: '#ffffff' }
+  }, err => {
+    if (err) { alert('QR生成エラー: ' + err); return; }
+    document.getElementById('preview').style.display = 'block';
+    document.getElementById('lot-card').style.display = 'none';
+    document.querySelector('.card.no-print').style.display = 'none';
+    window.scrollTo(0, 0);
+  });
+}
+
+function resetForm() {
+  selectedIngredient = null;
+  searchInput.value = '';
+  document.getElementById('inputLot').value = '';
+  document.getElementById('inputDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('selected-info').style.display = 'none';
+  document.getElementById('lot-card').style.display = 'none';
+  document.getElementById('preview').style.display = 'none';
+  document.querySelector('.card.no-print').style.display = 'block';
+}
+</script>
+</body>
+</html>
