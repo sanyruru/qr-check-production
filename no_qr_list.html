@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<!--
+================================================================
+  例外の原料一覧（no_qr_list.html）
+
+  QRラベルを貼れない原料の一覧を表示・印刷するページ。
+  中身は ingredients.js の NO_QR_INGREDIENTS から作るので、
+  原料を増やす・減らすときは ingredients.js だけを直す。
+================================================================
+-->
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<title>例外の原料一覧</title>
+
+<!-- 原料一覧は ingredients.js（全ツール共通）から読む。
+     開くたびに最新を取りに行き、通信できない時は前回の控え（端末内）を使う。 -->
+<script>document.write('<script src="ingredients.js?t=' + Date.now() + '"><\/script>');</script>
+<script>
+if (!window.INGREDIENT_MASTER) {
+  try { window.INGREDIENT_MASTER = JSON.parse(localStorage.getItem('ingredientMasterCache')); } catch (e) {}
+  if (!window.INGREDIENT_MASTER) {
+    window.INGREDIENT_MASTER = [];
+    alert('原料一覧（ingredients.js）を読み込めませんでした。\n電波の良い場所で開き直してください。');
+  }
+}
+if (!window.NO_QR_INGREDIENTS) {
+  try { window.NO_QR_INGREDIENTS = JSON.parse(localStorage.getItem('noQrCache')) || {}; } catch (e) { window.NO_QR_INGREDIENTS = {}; }
+}
+</script>
+<style>
+@page { size: A4; margin: 14mm; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: "Yu Gothic", "YuGothic", "Meiryo", 'Helvetica Neue', Arial, sans-serif; background: #f4f1eb; color: #1a1a1a; padding: 16px; }
+.sheet { max-width: 800px; margin: 0 auto; background: #fff; border: 1px solid #e0dbd0; border-radius: 14px; padding: 24px; }
+.head { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 3px solid #b35c00; padding-bottom: 8px; margin-bottom: 14px; gap: 12px; }
+h1 { font-size: 22px; color: #b35c00; }
+.meta { font-size: 12px; color: #6b6b6b; text-align: right; }
+.lead { font-size: 14px; line-height: 1.7; margin-bottom: 14px; }
+.how { background: #fdf0e1; border: 1.5px solid #f0cfa6; border-radius: 10px; padding: 10px 14px; font-size: 13px; line-height: 1.8; margin-bottom: 16px; }
+.how b { color: #b35c00; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { border: 1px solid #d9d4ca; padding: 9px 10px; text-align: left; vertical-align: top; }
+th { background: #f6f3ee; font-size: 12px; color: #555; }
+td.op { font-family: Consolas, monospace; font-weight: 700; white-space: nowrap; width: 80px; }
+td.name { font-weight: 800; }
+td.shelf { white-space: nowrap; width: 90px; }
+td.reason { font-size: 13px; color: #333; }
+td.unknown { color: #c1121f; }
+.empty { text-align: center; color: #888; padding: 28px 0; font-size: 14px; }
+.foot { font-size: 11px; color: #888; margin-top: 12px; line-height: 1.6; }
+.btn { display: block; width: 100%; max-width: 800px; margin: 0 auto 14px; padding: 14px; background: #1a5276; color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; cursor: pointer; }
+@media print {
+  body { background: #fff; padding: 0; }
+  .no-print { display: none !important; }
+  .sheet { border: none; border-radius: 0; padding: 0; max-width: none; }
+  tr { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<button class="btn no-print" onclick="window.print()">🖨️ この一覧を印刷する</button>
+
+<div class="sheet">
+  <div class="head">
+    <h1>例外の原料一覧（QRを貼れない原料）</h1>
+    <div class="meta" id="meta"></div>
+  </div>
+  <p class="lead">次の原料には、QRラベルを貼っていません。照合アプリでQRを読む代わりに、<b>目で確認</b>してから秤量します。</p>
+  <div class="how">
+    <b>製造の日の確認のしかた</b><br>
+    ① 照合アプリの「照合進捗」で、<b>「QRなし」</b>と出ている原料の <b>［目視で確認］</b> を押す<br>
+    ② 製造指示書と現物の<b>原料名・OPコード</b>が一致していることを目で確かめて「OK」を押す<br>
+    ③ あとはQRを読んだときと同じく、必要量を量って <b>［計量完了］</b>（記録には「OK（目視）」と残ります）
+  </div>
+  <div id="list"></div>
+  <div class="foot">この一覧は ingredients.js（全アプリ共通の原料一覧）の登録内容から作られています。原料を増やす・減らすときは、システム担当に連絡してください。</div>
+</div>
+
+<script>
+const MASTER = {};
+INGREDIENT_MASTER.forEach(([op, name, shelf]) => { MASTER[op] = { name, shelf }; });
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+const entries = Object.entries(NO_QR_INGREDIENTS).sort((a, b) => a[0].localeCompare(b[0]));
+const today = new Date();
+document.getElementById('meta').innerHTML =
+  `登録 ${entries.length}件<br>印刷日 ${today.getFullYear()}/${today.getMonth() + 1}/${today.getDate()}`;
+
+document.getElementById('list').innerHTML = entries.length
+  ? `<table>
+      <tr><th>OPコード</th><th>原料名</th><th>棚番</th><th>QRを貼れない理由</th></tr>
+      ${entries.map(([op, reason]) => {
+        const m = MASTER[op];
+        return m
+          ? `<tr><td class="op">${esc(op)}</td><td class="name">${esc(m.name)}</td><td class="shelf">${esc(m.shelf)}</td><td class="reason">${esc(reason)}</td></tr>`
+          : `<tr><td class="op">${esc(op)}</td><td class="name unknown" colspan="2">原料一覧に無いOPコードです</td><td class="reason">${esc(reason)}</td></tr>`;
+      }).join('')}
+    </table>`
+  : '<div class="empty">まだ登録がありません。<br>QRを貼れない原料が決まったら、ingredients.js の NO_QR_INGREDIENTS に登録してください。</div>';
+</script>
+</body>
+</html>

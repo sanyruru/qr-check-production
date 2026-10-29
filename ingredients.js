@@ -395,5 +395,23 @@ var INGREDIENT_MASTER = [
   ["01093", "Ｓフェイス　ＩＳ-202Ｐ", "2-2-8"]
 ];
 
+/*
+----------------------------------------------------------------
+  QRを貼れない原料（例外の原料一覧）
+
+  研究室で作る原料・容器が小さすぎる原料など、QRラベルを貼れない原料を
+  "OPコード": "QRを貼れない理由", の形で1行ずつ登録する。
+  ・ここに入れた原料だけ、照合アプリで「目視で確認」ボタンが出る
+    （スプレッドシートには「OK（目視）」と記録される）
+  ・現場に貼る一覧は no_qr_list.html で印刷できる
+  例）"00869": "研究室で製造（ラベルを貼る容器が無い）",
+----------------------------------------------------------------
+*/
+var NO_QR_INGREDIENTS = {
+};
+
 // 通信できない時のために、端末内に控えを残しておく
-try { localStorage.setItem('ingredientMasterCache', JSON.stringify(INGREDIENT_MASTER)); } catch (e) {}
+try {
+  localStorage.setItem('ingredientMasterCache', JSON.stringify(INGREDIENT_MASTER));
+  localStorage.setItem('noQrCache', JSON.stringify(NO_QR_INGREDIENTS));
+} catch (e) {}

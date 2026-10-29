@@ -1580,6 +1580,83 @@ resetAll = function () { localStorage.removeItem('mt'); localStorage.removeItem(
 /* ═══════════ 製造方法QR照合パッチ（v4）ここまで ═══════════ */
 
 // ═══════════════════════════════════════════════════════════
+// QRを貼れない原料（例外の原料）パッチ（v5）
+//
+// 研究室で作る原料など、QRラベルを貼れない原料は ingredients.js の
+// NO_QR_INGREDIENTS に登録する。登録した原料だけ、照合進捗の一覧に
+// 「目視で確認」ボタンを出し、押すとQRを読んだのと同じ流れで秤量に進む。
+// スプレッドシートには「OK（目視）」と記録する。
+// ═══════════════════════════════════════════════════════════
+
+const NO_QR = window.NO_QR_INGREDIENTS || (function () {
+  try { return JSON.parse(localStorage.getItem('noQrCache')) || {}; } catch (e) { return {}; }
+})();
+function isNoQr(code) { return Object.prototype.hasOwnProperty.call(NO_QR, code); }
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+    .noqr-tag { font-size: 10px; color: var(--orange); font-weight: 700; margin-left: 4px; }
+    .visual-btn { margin-left: auto; flex: none; padding: 7px 10px; font-size: 12px; font-weight: 700;
+      background: #fff; color: var(--orange); border: 1.5px solid var(--orange); border-radius: 8px; cursor: pointer; }
+  `;
+  document.head.appendChild(st);
+})();
+
+// 目視で確認した時だけ、記録の結果を「OK（目視）」にする
+let visualChecking = false;
+const _logToSheetBeforeNoQr = logToSheet;
+logToSheet = function (ingredientName, ingredientCode, result, ingredientAmount) {
+  _logToSheetBeforeNoQr(ingredientName, ingredientCode,
+    visualChecking && result === 'OK' ? 'OK（目視）' : result, ingredientAmount);
+};
+
+function visualCheck(code) {
+  const m = MASTER_INGREDIENTS[code];
+  if (!m || !currentProduct || currentProduct.ingredients[code] === undefined || !isNoQr(code)) return;
+  const ok = confirm(
+    'QRを貼れない原料です。目で確認してください。\n\n' +
+    '原料名：' + m.name + '\nOPコード：' + code + '\n棚：' + m.shelf + '\n\n' +
+    '製造指示書と現物の原料名・OPコードが一致していますか？'
+  );
+  if (!ok) return;
+  visualChecking = true;
+  try { handleCode(code); } finally { visualChecking = false; }
+}
+
+/* ─── 照合進捗の一覧に「QRなし」と「目視で確認」ボタンを出す ───── */
+renderProgress = function () {
+  const ings = currentProduct.ingredients;
+  const total = Object.keys(ings).length;
+  const count = checkedCodes.length;
+  const pct = Math.round((count / total) * 100);
+  const items = Object.entries(ings).map(([c]) => {
+    const master = MASTER_INGREDIENTS[c] || { name: c, shelf: '?' };
+    const checked = checkedCodes.includes(c);
+    const pending = pendingCode === c;
+    const noQr = isNoQr(c);
+    return `<div class="ingredient-item ${checked ? 'checked' : pending ? 'pending' : ''}">
+      <div class="ingredient-check">${checked ? '✓' : pending ? '⏳' : ''}</div>
+      <div class="ingredient-info">
+        <div class="ingredient-name">${master.name}${noQr ? '<span class="noqr-tag">QRなし</span>' : ''}${pending ? ' <span style="color:var(--orange);font-size:10px;">計量中</span>' : ''}</div>
+        <div class="ingredient-amount">${computeAmount(c)} ／ 棚：${master.shelf}</div>
+      </div>
+      ${noQr && !checked && !pending ? `<button class="visual-btn" onclick="visualCheck('${c}')">目視で確認</button>` : ''}
+    </div>`;
+  }).join('');
+  return `
+    <div class="card">
+      <div class="card-title">照合進捗</div>
+      <div class="progress-header"><span>進捗</span><span>${count} / ${total}</span></div>
+      <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+      <div class="ingredient-list">${items}</div>
+    </div>
+  `;
+};
+
+/* ═══════════ QRを貼れない原料パッチ（v5）ここまで ═══════════ */
+
+// ═══════════════════════════════════════════════════════════
 // スキャン高速化パッチ（v3）
 //
 // 直したこと：
@@ -1597,7 +1674,7 @@ resetAll = function () { localStorage.removeItem('mt'); localStorage.removeItem(
    ★★★ 直したら APP_VERSION も必ず新しくすること ★★★
    このすぐ下の行です。変え忘れると現場の端末が更新されません。
    ══════════════════════════════════════════════════════ */
-const APP_VERSION = 'v4.2 (2026-10-29)';
+const APP_VERSION = 'v4.3 (2026-10-29)';
 
 /* ─── 版数の表示 ───────────────────────────────────────
    端末が古いページをキャッシュしていないか、目で確かめるための表示。 */
