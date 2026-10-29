@@ -1724,10 +1724,14 @@ renderWait = function () {
 //   ・同じCP番号 → OK（製造方法 照合済み）
 //   ・違うCP番号 → NG（製造方法の紙を取り違えている）
 // QRは issue_product_label.html で、指示書用とセットで発行する。
+//
+// 現場の流れ：製造指示書 → 原料の秤量 → 製造方法QR → 製造人数・名札 → 製造開始
+// 秤量が全部終わったら、製造人数の入力の前に「製造方法QRを読む」画面を出す。
 // ═══════════════════════════════════════════════════════════
 
 /* ─── 設定 ─────────────────────────────────────────────
-   true にすると、製造方法QRを照合するまで原料QRを受け付けなくなる。
+   false：製造方法QRの画面に「照合せずに進む」ボタンを出す（QRを貼っていない製品用）
+   true ：製造方法QRを照合するまで、製造人数の入力（製造開始）に進めなくする
    全製品の製造方法にQRを貼り終えるまでは false のままにしておくこと。
 ──────────────────────────────────────────────────────── */
 const REQUIRE_METHOD_CHECK = false;
@@ -1738,6 +1742,7 @@ const REQUIRE_METHOD_CHECK = false;
     .method-status { border-radius: 12px; padding: 10px 14px; margin: -8px 0 16px; font-size: 13px; font-weight: 600; }
     .method-status.ok { background: var(--green-pale); color: var(--green); }
     .method-status.ng { background: #fff4e5; color: var(--orange); }
+    .method-status.wait { background: #f0ede8; color: var(--muted); }
   `;
   document.head.appendChild(st);
 })();
@@ -1817,7 +1822,10 @@ function renderMethodResult(ok, method) {
 
   // 次に進むボタン（今の段階に合わせる）
   let next;
-  if (getBatchKg() === null) next = `<button class="btn-complete" onclick="renderBatchInput()">生産量の入力へ進む</button>`;
+  if (allIngredientsDone()) next = ok
+    ? `<button class="btn-complete" onclick="renderMakerStep()">製造者の確認へ進む 👥</button>`
+    : '';
+  else if (getBatchKg() === null) next = `<button class="btn-complete" onclick="renderBatchInput()">生産量の入力へ進む</button>`;
   else if (pendingCode) next = `<button class="btn-complete" onclick="closeWarning()">計量中の原料に戻る</button>`;
   else next = '';
 
@@ -1854,14 +1862,6 @@ handleCode = function (code) {
   const method = parseMethodCode(code);
   if (method) { handleMethodScan(method); return; }
 
-  // 製造方法を照合するまで原料QRを受け付けない（設定が true の時だけ）
-  if (REQUIRE_METHOD_CHECK && currentProduct && !methodOk() &&
-      !parseInstructionCode(code) && !parseManufacturerCode(code)) {
-    setFeedback('ng');
-    showMethodModal('📄', '製造方法のQRを先に読んでください', `「${currentProduct.name}」の製造方法の紙に貼ってあるQRを読んでから、原料をスキャンしてください`);
-    return;
-  }
-
   _handleCodeBeforeMethod(code);
 };
 
@@ -1873,8 +1873,54 @@ renderProductCard = function () {
   const mt = getMethod();
   const status = methodOk()
     ? `<div class="method-status ok">📄 製造方法：照合済み${mt.rev ? '（改訂 ' + mt.rev + '）' : ''}</div>`
-    : `<div class="method-status ng">📄 製造方法：まだ照合していません — 製造方法のQRを読んでください</div>`;
+    : methodSkipped()
+    ? `<div class="method-status ng">📄 製造方法：照合せずに進みました</div>`
+    : allIngredientsDone()
+    ? `<div class="method-status ng">📄 製造方法：まだ照合していません — 製造方法のQRを読んでください</div>`
+    : `<div class="method-status wait">📄 製造方法：秤量が終わったら、製造方法のQRを読みます</div>`;
   return html + status;
+};
+
+/* ─── 秤量が終わったら、製造人数の入力の前に製造方法QRを読ませる ───── */
+// 「照合せずに進む」を押した記録（製品が変わったら無効）
+function methodSkipped() {
+  return !!(currentProduct && localStorage.getItem('mtskip') === normCp(currentProduct.code));
+}
+
+function renderMethodWaitScreen() {
+  document.getElementById('app').innerHTML = `
+    <div class="wait-card">
+      <div class="wait-icon">📄</div>
+      <div class="wait-title">製造方法のQRを読んでください</div>
+      <div class="wait-sub">全原料の秤量が終わりました<br>製造方法の紙に貼ってある<b>オレンジのQR</b>を読んで<br>「${currentProduct.name}」と同じ製品か確認します</div>
+    </div>
+    ${REQUIRE_METHOD_CHECK ? '' : `<button class="btn-reset" onclick="skipMethodCheck()">製造方法にQRが無い → 照合せずに進む</button>`}
+    ${renderProductCard()}
+    ${renderProgress()}
+    ${renderLog()}
+    <button class="btn-reset" onclick="resetAll()">🔄 リセット</button>
+  `;
+}
+
+function skipMethodCheck() {
+  if (!confirm('製造方法を照合せずに、製造者の確認へ進みますか？')) return;
+  const cp = normCp(currentProduct.code);
+  localStorage.setItem('mtskip', cp);
+  const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  logs.unshift({ result: 'ng', name: '製造方法：照合せずに進んだ', code: cp, time });
+  save();
+  logToSheet('製造方法：照合なし', cp, 'SKIP', '―');
+  renderMakerStep();
+}
+
+const _renderMakerStepBeforeMethod = renderMakerStep;
+renderMakerStep = function () {
+  // 製造人数をまだ入れていない（＝製造開始前）で、製造方法が未照合なら先に読ませる
+  if (currentProduct && getMakerCount() === null && !methodOk() && !methodSkipped()) {
+    renderMethodWaitScreen();
+    return;
+  }
+  _renderMakerStepBeforeMethod();
 };
 
 /* ─── 最初の画面の手順に製造方法QRを足す ───── */
@@ -1884,13 +1930,17 @@ renderProductScan = function () {
   const app = document.getElementById('app');
   app.innerHTML = app.innerHTML.replace(
     '4. 続けて原料のQRコードをスキャン',
-    '4. 製造方法のQRコードをスキャン（取り違え防止）<br>5. 続けて原料のQRコードをスキャン'
+    '4. 続けて原料のQRコードをスキャン<br>5. 秤量が終わったら製造方法のQRコードをスキャン'
   );
 };
 
 /* ─── 最初からやり直す時は製造方法の照合もクリア ───── */
 const _goToStartBeforeMethod = goToStart;
-goToStart = function () { localStorage.removeItem('mt'); _goToStartBeforeMethod(); };
+goToStart = function () { localStorage.removeItem('mt'); localStorage.removeItem('mtskip'); _goToStartBeforeMethod(); };
+
+/* ─── リセット（同じ製品で秤量からやり直す）時も、もう一度照合させる ───── */
+const _resetAllBeforeMethod = resetAll;
+resetAll = function () { localStorage.removeItem('mt'); localStorage.removeItem('mtskip'); _resetAllBeforeMethod(); };
 
 /* ═══════════ 製造方法QR照合パッチ（v4）ここまで ═══════════ */
 
@@ -1912,7 +1962,7 @@ goToStart = function () { localStorage.removeItem('mt'); _goToStartBeforeMethod(
    ★★★ 直したら APP_VERSION も必ず新しくすること ★★★
    このすぐ下の行です。変え忘れると現場の端末が更新されません。
    ══════════════════════════════════════════════════════ */
-const APP_VERSION = 'v4.0 (2026-10-29)';
+const APP_VERSION = 'v4.1 (2026-10-29)';
 
 /* ─── 版数の表示 ───────────────────────────────────────
    端末が古いページをキャッシュしていないか、目で確かめるための表示。 */
