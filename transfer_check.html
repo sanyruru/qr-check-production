@@ -66,7 +66,7 @@ body { font-family:'Helvetica Neue',Arial,sans-serif; background:var(--bg); min-
 <div class="header">
   <div class="header-brand">原料管理システム</div>
   <div class="header-title">原料 移し替え照合</div>
-  <div class="header-ver">v1.0 (2026-09-11)</div>
+  <div class="header-ver">v1.1 (2026-10-29) ／ ロット照合対応</div>
 </div>
 
 <div class="scanner-card">
@@ -585,10 +585,16 @@ function handleScan(raw) {
   } else if (step === 1) {
     // 2本目スキャン → 照合
     const match = (info.op === first.op);
+    // ロットも照合する：新しい一斗缶が入ったら小分け容器のラベルも新しいロットに貼り替える決まり。
+    // 一斗缶側にロットがある時だけ比べる（容器側にロットが無い＝古い形式のラベルのまま、もNGにする）
+    const lotMatch = !first.lot || info.lot.trim() === first.lot.trim();
     step = 2;
-    if (match) {
+    if (match && lotMatch) {
       flash('ok'); playOk();
       renderOk(info, master);
+    } else if (match) {
+      flash('err'); playNg();
+      renderLotNg(info, master);
     } else {
       flash('err'); playNg();
       renderNg(info, master);
@@ -637,7 +643,7 @@ function renderOk(info, master) {
     '<div class="result-card ok">' +
     '<span class="result-icon">✅</span>' +
     '<div class="result-title">照合 OK！</div>' +
-    '<div class="result-msg">一斗缶と小分け容器の原料が一致しています<br>安全に移し替えできます</div>' +
+    '<div class="result-msg">一斗缶と小分け容器の原料' + (first.lot ? '・ロット番号' : '') + 'が一致しています<br>安全に移し替えできます</div>' +
     '</div>' +
     '<div class="info-card">' +
     '<div class="card-title">照合結果</div>' +
@@ -670,6 +676,34 @@ function renderNg(info, master) {
     '<div class="card-title">2本目（小分け容器）</div>' +
     infoRow('原料名', master.name) +
     infoRow('OPコード', info.op) +
+    '</div>' +
+    resetBtn();
+}
+
+// 原料は同じだが、ロット番号が違う（小分け容器のラベルを新しいロットに貼り替え忘れている）
+function renderLotNg(info, master) {
+  document.getElementById('app').innerHTML =
+    '<div class="result-card error">' +
+    '<span class="result-icon">⚠️</span>' +
+    '<div class="result-title">ロット番号が違います！</div>' +
+    '<div class="result-msg">' +
+    '原料は同じ（' + escH(master.name) + '）ですが、<br>ロット番号が一致しません<br><br>' +
+    '一斗缶：' + escH(first.lot) + '<br>' +
+    '容器　：' + escH(info.lot || '（ロット番号なし）') + '<br><br>' +
+    '小分け容器の古いラベルを剥がし、<br>新しいロットのラベルを貼ってから<br>もう一度①から読んでください' +
+    '</div>' +
+    '</div>' +
+    '<div class="info-card">' +
+    '<div class="card-title">1本目（一斗缶）</div>' +
+    infoRow('原料名', first.name) +
+    infoRow('ロット', first.lot) +
+    (first.recv ? infoRow('受入日', first.recv) : '') +
+    '</div>' +
+    '<div class="info-card">' +
+    '<div class="card-title">2本目（小分け容器）</div>' +
+    infoRow('原料名', master.name) +
+    infoRow('ロット', info.lot || '（なし）') +
+    (info.recv ? infoRow('受入日', info.recv) : '') +
     '</div>' +
     resetBtn();
 }
