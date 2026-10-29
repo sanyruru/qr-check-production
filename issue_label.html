@@ -65,9 +65,12 @@ input:focus, select:focus { outline: none; border-color: #2d6a4f; }
   padding: 8px; border-radius: 8px; margin-bottom: 14px; letter-spacing: .05em;
 }
 #qr-canvas { margin: 0 auto 14px; display: flex; justify-content: center; }
+/* QRは3.5cm角（スマホで読める大きさを保ちつつ、ラベルを小さくする） */
+#qr-canvas img, #qr-canvas canvas { width: 35mm !important; height: 35mm !important; image-rendering: pixelated; }
 .label-name { font-size: 18px; font-weight: 900; color: #1a1a1a; margin-bottom: 6px; }
-.label-sub { font-size: 12px; color: #555; margin-bottom: 4px; font-family: monospace; }
-.label-lot { font-size: 13px; font-weight: 700; color: #2d6a4f; margin-top: 6px; }
+/* OPコード・棚番・受入日・ロットも、現場で読みやすいよう原料名と同じ大きさにする */
+.label-sub { font-size: 18px; font-weight: 900; color: #1a1a1a; margin-bottom: 4px; }
+.label-lot { font-size: 18px; font-weight: 900; color: #1a1a1a; margin-bottom: 4px; }
 .label-divider { border: none; border-top: 1px solid #e0dbd0; margin: 10px 0; }
 .label-url { font-size: 9px; color: #aaa; word-break: break-all; }
 
@@ -123,8 +126,6 @@ input:focus, select:focus { outline: none; border-color: #2d6a4f; }
     <div class="label-sub" id="prev-shelf"></div>
     <div class="label-lot" id="prev-date"></div>
     <div class="label-lot" id="prev-lot"></div>
-    <hr class="label-divider">
-    <div class="label-url">https://sanyruru.github.io/qr-check-production/check_yuru.html</div>
   </div>
   <button class="btn btn-print no-print" onclick="window.print()">🖨️ このラベルを印刷する</button>
   <button class="btn btn-reset no-print" onclick="resetForm()">↩️ 別の原料を発行する</button>
@@ -582,8 +583,8 @@ function generateQR() {
     container.innerHTML = ''; // 前回のQRをクリア
     new QRCode(container, {
       text: qrData,
-      width: 200,
-      height: 200,
+      width: 400,   // 3.5cm角で印刷してもぼやけないよう、大きめに作って縮める
+      height: 400,
       colorDark: '#000000',
       colorLight: '#ffffff',
       correctLevel: QRCode.CorrectLevel.M
