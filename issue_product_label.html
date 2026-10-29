@@ -8,6 +8,7 @@
                       （check_yuru.html が今まで読んでいる形式そのまま）
     ・製造方法用    … 中身 "MTH:CP0727|ユルナチュール|2024.02.20"
                       （check_yuru.html が CP番号を突き合わせて照合する）
+  どちらも実際のQRには「照合アプリのURL?d=中身」の形で入れる（標準カメラでも開く）。
 
   同じ入力から2枚を作るので、2枚のCP番号が食い違うことはない。
   登録した製品はこのブラウザに保存される（別のPCで使う時は
@@ -113,7 +114,7 @@ details.paste[open] summary { margin-bottom: 8px; }
 .label.method { border-color: #b35c00; }
 .label-header { color: #fff; font-size: 13px; font-weight: 700; padding: 8px; border-radius: 8px; margin-bottom: 12px; letter-spacing: .05em; background: #2d6a4f; }
 .label.method .label-header { background: #b35c00; }
-.label img { width: 46mm; height: 46mm; display: block; margin: 0 auto 10px; image-rendering: pixelated; }
+.label img { width: 60mm; height: 60mm; max-width: 100%; display: block; margin: 0 auto 10px; image-rendering: pixelated; }
 .label-cp { font-size: 22px; font-weight: 900; font-family: monospace; letter-spacing: .05em; }
 .label-name { font-size: 15px; font-weight: 800; margin: 4px 0 6px; line-height: 1.35; word-break: break-all; }
 .label-divider { border: none; border-top: 1px solid #e0dbd0; margin: 8px 0; }
@@ -646,6 +647,15 @@ function methodText(p) {
   return `MTH:${p.cp}|${p.name}|${p.rev || ''}`;
 }
 
+// QRには照合アプリのURLに中身を ?d= で付けて入れる（原料QRと同じ形）。
+// スマホの標準カメラで読んでも照合アプリが開き、アプリ内のスキャンでも ?d= の中身だけを読む。
+// QRの模様を細かくしすぎないよう、URLで使える , : | は記号のまま残す。
+const CHECK_URL = 'https://sanyruru.github.io/qr-check-production/check_yuru.html';
+function qrUrl(text) {
+  const d = encodeURIComponent(text).replace(/%2C/g, ',').replace(/%3A/g, ':').replace(/%7C/g, '|');
+  return `${CHECK_URL}?d=${d}`;
+}
+
 /* ─── 保存 ───────────────────────────── */
 function loadAll() {
   try { return JSON.parse(localStorage.getItem(STORE_KEY) || '{}'); } catch (e) { return {}; }
@@ -861,13 +871,13 @@ function importList(input) {
 
 /* ─── ラベルの表示・印刷 ─────────────────── */
 async function showSheet(products) {
-  const opts = { width: 360, margin: 1, errorCorrectionLevel: 'M' };
+  const opts = { width: 600, margin: 1, errorCorrectionLevel: 'M' };
   try {
     const html = [];
     for (const p of products) {
       const [qrInst, qrMeth] = await Promise.all([
-        QRCode.toDataURL(instructionText(p), opts),
-        QRCode.toDataURL(methodText(p), opts)
+        QRCode.toDataURL(qrUrl(instructionText(p)), opts),
+        QRCode.toDataURL(qrUrl(methodText(p)), opts)
       ]);
       html.push(`
         <div class="pair">
