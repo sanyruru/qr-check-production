@@ -54,6 +54,21 @@ input:focus, select:focus, textarea:focus { outline: none; border-color: #2d6a4f
 .btn-sub { background: #fff; border: 2px solid #e0dbd0; color: #555; font-size: 14px; font-weight: 600; padding: 12px; }
 .btn-mini { width: auto; padding: 6px 12px; font-size: 12px; border-radius: 8px; margin: 0; }
 
+.search-wrap { position: relative; }
+#cpDropdown {
+  display: none; position: absolute; top: calc(100% - 10px); left: 0;
+  width: min(640px, calc(100vw - 32px));
+  background: #fff; border: 1.5px solid #2d6a4f; border-radius: 10px;
+  max-height: 280px; overflow-y: auto; z-index: 100; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+.drop-item { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f0ede8; font-size: 13px; }
+.drop-item:last-child { border-bottom: none; }
+.drop-item:hover, .drop-item.active { background: #e8f6ec; }
+.drop-cp { font-family: monospace; font-weight: 700; color: #2d6a4f; margin-right: 8px; }
+.drop-tag { font-size: 10px; color: #888; margin-left: 6px; }
+.drop-empty { padding: 10px 14px; font-size: 12px; color: #888; }
+.picked { background: #e8f6ec; color: #2d6a4f; border-radius: 10px; padding: 8px 12px; font-size: 12px; margin: -6px 0 14px; display: none; }
+
 details.paste { margin-bottom: 10px; }
 details.paste summary { font-size: 13px; color: #1a5276; cursor: pointer; padding: 6px 0; font-weight: 600; }
 details.paste[open] summary { margin-bottom: 8px; }
@@ -134,9 +149,10 @@ details.paste[open] summary { margin-bottom: 8px; }
       <button class="btn btn-sub" onclick="importFromQrText()">この内容を読み込む</button>
     </details>
     <div class="row2">
-      <div>
-        <label>CP番号</label>
-        <input type="text" id="inCp" placeholder="例：1627 または CP1627" autocomplete="off">
+      <div class="search-wrap">
+        <label>CP番号（番号か製品名で検索）</label>
+        <input type="text" id="inCp" placeholder="例：1102 / モイスト" autocomplete="off">
+        <div id="cpDropdown"></div>
       </div>
       <div>
         <label>製造方法の改訂日（任意）</label>
@@ -144,7 +160,8 @@ details.paste[open] summary { margin-bottom: 8px; }
       </div>
     </div>
     <label>製品名（製造方法・製造指示書に書かれている名前）</label>
-    <input type="text" id="inName" placeholder="例：ロゼボワールジューム エナジー O-Ⅱ ローション" autocomplete="off">
+    <input type="text" id="inName" placeholder="CP番号を選ぶと自動で入ります" autocomplete="off">
+    <div class="picked" id="pickedNote"></div>
   </div>
 
   <div class="card">
@@ -570,6 +587,28 @@ const INGREDIENTS = [
   ['01092', 'ＭＥＲＱＵＡＴ 280 ポリマー', '2-2-7'],
   ['01093', 'Ｓフェイス ＩＳ-202Ｐ', '2-2-8']
 ];
+/* ─── 製品マスタ ───────────────────────────
+   [製造方法の改訂日, 製造指示書QRの中身]
+   CP番号・製品名・原料はQRの中身から読む。製品を増やすときはここに1行足す。
+   （真珠VM14品は処方まとめ2026.08.28と既存の指示書QR、CP0727は既存の指示書QRから） */
+const PRODUCTS = [
+  ["", "CP0727,ユルナチュール,00135:60.0,00223:39.699,00893:0.1,00894:0.001,00082:0.2"],
+  ["2021.10.25", "CP1101,花珠真珠ライト,00868:0.01,00091:0.02,00153:2.2,00363:2.0,00125:0.05,01068:2.0,00867:0.3,01013:0.05,00095:3.0,00001:12.0,00907:1.0,00881:3.0,00825:5.0,01047:1.0,00310:0.0001,00940:0.01,01066:0.01,00598:0.01,01063:0.01,01064:0.01,01086:0.01,01085:0.01,01087:0.01,01088:0.01,01089:0.01,00926:0.04"],
+  ["2021.01.22", "CP1102,花珠真珠 モイスト,00942:0.8,00194:1.0,00136:3.0,00144:1.6,00070:3.0,00898:9.0,00944:9.0,00910:0.7,01068:0.8,00867:0.3,00125:0.05,01013:0.05,00934:3.0,00095:4.0,00907:1.0,01012:0.05,00868:0.002,00298:0.19,00020:0.2,01065:3.0,01047:1.0,00310:0.0001,00940:0.01,00598:0.01,01066:0.01,01063:0.01,01064:0.01,01085:0.01,01086:0.01,01087:0.01,01088:0.01,01089:0.01,00926:0.06"],
+  ["2022.05.26", "CP1103,真珠 ヴィプロメール エッセンス ホワイト,00914:0.05,00037:0.5,01012:0.25,01078:0.05,00825:4.0,00175:0.3,00159:0.2,00867:0.3,01076:0.5,00926:0.02,00298:0.07,00095:4.0,00001:8.0,00907:1.0,00934:1.0,00879:0.5,01045:0.01,01046:0.29,00091:0.02,00038:0.03,00296:0.01,00598:0.01,00310:0.0001,01047:1.0,01063:0.01,01087:0.01,01089:0.01,01085:0.01,01086:0.01"],
+  ["2022.02.07", "CP1104,真珠ヴィプロメールミルクホワイト,00194:0.5,00217:0.5,00031:5.5,00943:5.5,00912:1.0,00911:1.0,00910:1.0,00125:0.05,00036:0.2,00934:6.0,00095:6.0,00867:0.3,00188:0.2,00091:0.02,00914:0.066,00783:0.033,00298:0.03,01047:1.0,00310:0.0001,00598:0.01,00296:0.01,01063:0.01,01087:0.01,01089:0.01,01086:0.01,01085:0.01,00926:0.04"],
+  ["2021.07.30", "CP1105,真珠 ヴィプロメール ローション ホワイト,00052:0.02,00037:2.5,00298:0.02,00825:0.05,00926:0.015,00175:0.21,01093:0.14,00031:0.15,00867:0.3,01076:0.5,00001:4.5,01034:3.5,00095:1.5,00907:1.0,01065:1.0,01045:0.01,01046:0.29,00038:0.03,01047:1.0,00296:0.01,00598:0.01,00310:0.0001,01063:0.01,01087:0.01,01089:0.01,01085:0.01,01086:0.01"],
+  ["2022.02.03", "CP1106,真珠 ヴィプロメール ホイップマスク ホワイト,01062:1.0,00825:3.0,00038:0.02,00188:0.1,00175:0.5,00867:0.2,00236:0.01,00878:0.002,00134:10.0,00880:0.8,00027:5.0,00040:2.0,00296:0.01,00598:0.01,00310:0.0001,01047:1.0,01063:0.01,01087:0.01,01089:0.01,01086:0.01,01085:0.01"],
+  ["2022.02.25", "CP1107,真珠ヴィプロメールエッセンスリンクル,00914:0.05,00037:0.5,01012:0.25,01078:0.05,00298:0.06,00049:0.3,00038:0.03,00825:4.0,00175:0.3,00159:0.2,00867:0.3,01076:0.5,00926:0.02,00095:4.0,00001:8.0,00907:1.0,00934:1.0,00879:0.5,01045:0.01,00091:0.02,01046:0.29,00296:0.01,00598:0.01,00310:0.0001,01066:0.01,01063:0.01,01088:0.01,01089:0.01,01085:0.01,01086:0.01"],
+  ["2020.03.25", "CP1108,真珠 ヴィプロメール ミルク リンクル,00194:0.5,00217:0.5,00031:5.5,00943:5.5,00912:1.0,00911:1.0,00910:1.0,00036:0.2,00297:0.3,00934:6.0,00095:6.0,00867:0.3,00188:0.2,00091:0.02,00914:0.066,00783:0.033,00298:0.03,00038:0.02,01066:0.01,00310:0.0001,00598:0.01,00296:0.01,01063:0.01,01089:0.01,01086:0.01,01085:0.01,01088:0.01,00926:0.04"],
+  ["2021.07.16", "CP1109,真珠 ヴィプロメール ローション リンクル,00052:0.02,00037:2.5,00298:0.02,00825:0.05,00926:0.015,00175:0.21,01093:0.14,00031:0.15,00867:0.3,01076:0.5,00001:4.5,01034:3.5,00907:1.0,00095:1.5,01065:1.0,01045:0.01,01046:0.29,00049:0.3,00038:0.03,00296:0.01,00598:0.01,00310:0.0001,01066:0.01,01063:0.01,01088:0.01,01089:0.01,01085:0.01,01086:0.01"],
+  ["2019.09.11", "CP1110,真珠ヴィプロメールパックリンクル,00111:12.5,00052:0.5,00825:10.0,00175:1.0,00095:2.0,00907:1.0,00867:0.3,00027:3.0,00303:0.05,01073:0.2,00096:0.2,01045:0.02,01046:0.28,00868:0.02,01074:0.1,00296:0.01,00598:0.01,00310:0.0001,01066:0.01,01063:0.01,01088:0.01,01089:0.01,01085:0.01,01086:0.01,00926:0.0125"],
+  ["2019.07.25", "CP1111,真珠ヴィプロメールクレンジングオイルブライト,00297:0.3,00867:0.2,01013:0.1,00125:0.05,01079:7.0,01080:8.0,00223:0.7,01081:0.7,00906:0.7,00104:25.0,00031:35.0,00898:19.1,00095:0.1,00001:0.5,00829:0.01,01063:0.01,00296:0.01,00310:0.0001,00598:0.01,00926:0.1"],
+  ["2019.10.10", "CP1112,真珠 ヴィプロメール クレンジングクリーム ブライト,00296:0.01,00598:0.01,01063:0.01,00829:0.01,00310:0.0001,00227:3.0,00125:0.05,00188:0.1,00297:0.3,00867:0.2,01013:0.1,00926:0.08,00825:8.0,00881:3.0,00095:3.0,00898:9.0,00223:0.5,01081:0.4,00944:15.0"],
+  ["2021.05.25", "CP1113,真珠 ヴィプロメール クレンジングフォームブライト,01092:1.1,01025:6.0,01026:2.3,00186:3.0,00023:14.0,00136:5.0,00876:4.0,00875:4.0,00070:1.5,01022:1.9,01090:1.0,01065:1.0,00091:0.1,00188:0.1,00125:0.01,00095:15.0,00001:4.5,01052:2.0,00867:0.2,00297:0.01,00310:0.0001,00296:0.01,00598:0.01,01063:0.01,00829:0.01,00926:0.1,00298:5.95"],
+  ["2019.07.18", "CP1114,真珠 ヴィプロメール マッサージクリーム ブライト,00914:0.09,00298:0.036,00942:2.5,00217:0.5,01072:0.5,00136:1.0,00866:1.4,00326:0.5,00070:2.0,00943:16.0,00363:12.0,00944:15.0,00760:2.5,00130:0.5,00867:0.3,00297:0.3,00001:0.5,00095:1.0,00907:1.0,00038:0.02,00296:0.01,00310:0.0001,00598:0.01,00829:0.01,01063:0.01,01064:0.01,00926:0.07"],
+];
+
 const MASTER = {};
 INGREDIENTS.forEach(([op, name]) => { MASTER[op] = name; });
 
@@ -648,8 +687,10 @@ function sumPct() {
 function updateTotal() {
   const t = sumPct();
   const el = document.getElementById('totalPct');
-  el.textContent = t + '%';
-  el.className = 'total-val ' + (Math.abs(t - 100) < 0.0005 ? 'ok' : 'ng');
+  // 精製水などQRを貼らない原料は入れないので、100%未満は普通にありうる
+  const over = t - 100 >= 0.0005;
+  el.textContent = t + '%' + (over ? '（100%を超えています）' : t < 100 ? '（残りは精製水など）' : '');
+  el.className = 'total-val ' + (over ? 'ng' : 'ok');
 }
 
 /* ─── 貼り付けからの読み込み ─────────────── */
@@ -720,10 +761,10 @@ function saveAndShow() {
     return;
   }
   box.style.display = 'none';
-  // 合計が100%でない処方もありうるので、止めずに確認だけする
+  // 100%を超えるのは入力ミスの可能性が高いので、確認する
   const t = sumPct();
-  if (Math.abs(t - 100) >= 0.0005 &&
-      !confirm(`割合の合計が ${t}% です（100% ではありません）。\nこのまま作りますか？`)) return;
+  if (t - 100 >= 0.0005 &&
+      !confirm(`割合の合計が ${t}% で、100% を超えています。\nこのまま作りますか？`)) return;
   const all = loadAll();
   if (all[product.cp] && all[product.cp].name !== product.name &&
       !confirm(`${product.cp} は「${all[product.cp].name}」として登録済みです。\n「${product.name}」で上書きしますか？`)) return;
@@ -864,6 +905,101 @@ function backToEditor() {
   document.getElementById('sheet').style.display = 'none';
   document.getElementById('editor').style.display = 'block';
 }
+
+/* ─── CP番号の検索（原料QRラベル発行と同じ感じで選べるようにする） ───
+   製品マスタ（PRODUCTS）と、このブラウザで登録した製品の両方から探す。
+   同じCP番号があれば、登録した製品（直したもの）を優先する。 */
+function parseInstruction(raw) {
+  const parts = raw.split(',');
+  const ingredients = [];
+  for (let i = 2; i < parts.length; i++) {
+    const [op, pct] = parts[i].split(':');
+    if (op && pct !== undefined && !isNaN(parseFloat(pct))) ingredients.push({ op: normOp(op), pct: String(parseFloat(pct)) });
+  }
+  return { cp: normCp(parts[0]), name: (parts[1] || '').trim(), ingredients };
+}
+function allProducts() {
+  const map = {};
+  PRODUCTS.forEach(([rev, raw]) => { const p = parseInstruction(raw); p.rev = rev; p.source = 'master'; map[p.cp] = p; });
+  Object.values(loadAll()).forEach(p => { map[p.cp] = { ...p, source: 'saved' }; });
+  return Object.values(map).sort((a, b) => a.cp.localeCompare(b.cp));
+}
+// 検索用：全角→半角・空白を消す・小文字にそろえる
+function keyOf(s) { return toHalf(s).replace(/\s+/g, '').toLowerCase(); }
+
+const cpInput = document.getElementById('inCp');
+const cpDropdown = document.getElementById('cpDropdown');
+let dropItems = [];
+let dropActive = -1;
+let lastPickedCp = null;
+
+function searchProducts(q) {
+  const k = keyOf(q);
+  if (!k) return [];
+  const digits = toHalf(q).replace(/\D/g, '');
+  return allProducts().filter(p =>
+    keyOf(p.name).includes(k) || keyOf(p.cp).includes(k) || (digits && p.cp.replace(/^CP0*/, '').startsWith(digits.replace(/^0+/, '')))
+  ).slice(0, 30);
+}
+
+function renderDropdown() {
+  dropItems = searchProducts(cpInput.value);
+  dropActive = dropItems.length ? 0 : -1;
+  if (!cpInput.value.trim()) { cpDropdown.style.display = 'none'; return; }
+  cpDropdown.innerHTML = dropItems.length
+    ? dropItems.map((p, i) => `
+        <div class="drop-item${i === dropActive ? ' active' : ''}" onmousedown="event.preventDefault(); selectProduct('${esc(p.cp)}')">
+          <span class="drop-cp">${esc(p.cp)}</span>${esc(p.name)}
+          <span class="drop-tag">${p.ingredients.length ? '原料' + p.ingredients.length + '種類' : '原料未登録'}${p.source === 'saved' ? '・登録済み' : ''}</span>
+        </div>`).join('')
+    : '<div class="drop-empty">見つかりません。新しい製品なら、そのままCP番号と製品名を入力してください。</div>';
+  cpDropdown.style.display = 'block';
+}
+
+function selectProduct(cp) {
+  const p = allProducts().find(x => x.cp === cp);
+  if (!p) return;
+  lastPickedCp = p.cp;
+  cpInput.value = p.cp;
+  document.getElementById('inName').value = p.name;
+  document.getElementById('inRev').value = p.rev || '';
+  rows = p.ingredients.length ? p.ingredients.map(i => ({ ...i })) : [{ op: '', pct: '' }];
+  renderRows();
+  cpDropdown.style.display = 'none';
+  const note = document.getElementById('pickedNote');
+  note.textContent = p.ingredients.length
+    ? `✓ ${p.cp} の製品名・改訂日・原料${p.ingredients.length}種類を読み込みました。内容を確認して「保存してラベルを作る」を押してください。`
+    : `✓ ${p.cp} の製品名を読み込みました。原料と割合を入力してください。`;
+  note.style.display = 'block';
+}
+
+cpInput.addEventListener('input', () => {
+  document.getElementById('pickedNote').style.display = 'none';
+  renderDropdown();
+});
+cpInput.addEventListener('keydown', e => {
+  if (cpDropdown.style.display !== 'block' || !dropItems.length) return;
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    dropActive = (dropActive + (e.key === 'ArrowDown' ? 1 : -1) + dropItems.length) % dropItems.length;
+    [...cpDropdown.querySelectorAll('.drop-item')].forEach((el, i) => el.classList.toggle('active', i === dropActive));
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    selectProduct(dropItems[Math.max(dropActive, 0)].cp);
+  } else if (e.key === 'Escape') {
+    cpDropdown.style.display = 'none';
+  }
+});
+// 番号を打って欄を離れたとき、CP番号がぴったり一致する製品があれば自動で選ぶ
+cpInput.addEventListener('blur', () => {
+  cpDropdown.style.display = 'none';
+  const v = cpInput.value.trim();
+  // 選んだあとに製品名などを手で直していたら、上書きしない
+  if (!v || normCp(v) === lastPickedCp) return;
+  const hit = allProducts().find(p => p.cp === normCp(v));
+  if (hit) selectProduct(hit.cp);
+  else cpInput.value = /^\D*\d+\D*$/.test(toHalf(v)) ? normCp(v) : v;
+});
 
 rows = [{ op: '', pct: '' }];
 renderRows();
