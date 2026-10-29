@@ -1717,6 +1717,184 @@ renderWait = function () {
 /* ═══════════ 製造者QR照合パッチ（v2）ここまで ═══════════ */
 
 // ═══════════════════════════════════════════════════════════
+// 製造方法QR照合パッチ（v4）
+//
+// 製造方法の紙に貼ったQR（"MTH:CP0727|ユルナチュール|2024.02.20"）を読むと、
+// いま読み込んでいる製造指示書のCP番号と突き合わせる。
+//   ・同じCP番号 → OK（製造方法 照合済み）
+//   ・違うCP番号 → NG（製造方法の紙を取り違えている）
+// QRは issue_product_label.html で、指示書用とセットで発行する。
+// ═══════════════════════════════════════════════════════════
+
+/* ─── 設定 ─────────────────────────────────────────────
+   true にすると、製造方法QRを照合するまで原料QRを受け付けなくなる。
+   全製品の製造方法にQRを貼り終えるまでは false のままにしておくこと。
+──────────────────────────────────────────────────────── */
+const REQUIRE_METHOD_CHECK = false;
+
+(function () {
+  const st = document.createElement('style');
+  st.textContent = `
+    .method-status { border-radius: 12px; padding: 10px 14px; margin: -8px 0 16px; font-size: 13px; font-weight: 600; }
+    .method-status.ok { background: var(--green-pale); color: var(--green); }
+    .method-status.ng { background: #fff4e5; color: var(--orange); }
+  `;
+  document.head.appendChild(st);
+})();
+
+// "1627" "CP：1627" "ｃｐ1627" → "CP1627"
+function normCp(s) {
+  let v = String(s || '')
+    .replace(/[！-～]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .toUpperCase().replace(/[^0-9A-Z]/g, '');
+  if (/^\d+$/.test(v)) v = 'CP' + v;
+  const m = v.match(/^CP(\d+)$/);
+  if (m) v = 'CP' + m[1].padStart(4, '0');
+  return v;
+}
+
+function parseMethodCode(raw) {
+  const m = String(raw).match(/^MTH:(.*)$/i);
+  if (!m) return null;
+  const [cp, name, rev] = m[1].split('|');
+  if (!cp) return null;
+  return { cp: normCp(cp), name: (name || '').trim(), rev: (rev || '').trim() };
+}
+
+function getMethod() {
+  try { return JSON.parse(localStorage.getItem('mt') || 'null'); } catch (e) { return null; }
+}
+// 照合済みの記録が「いま読み込んでいる製品」のものかどうか
+function methodOk() {
+  const mt = getMethod();
+  return !!(mt && currentProduct && mt.cp === normCp(currentProduct.code));
+}
+
+function handleMethodScan(method) {
+  if (!currentProduct) {
+    setFeedback('ng');
+    showMethodModal('📋', '先に製造指示書を読んでください', '製造方法のQRは、製造指示書のQRを読んだあとに読み取ってください');
+    return;
+  }
+  const time = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const label = '製造方法：' + (method.name || method.cp);
+
+  if (method.cp === normCp(currentProduct.code)) {
+    localStorage.setItem('mt', JSON.stringify({ cp: method.cp, name: method.name, rev: method.rev, time }));
+    logs.unshift({ result: 'ok', name: label, code: method.cp, time });
+    save();
+    setFeedback('ok');
+    logToSheet(label, method.cp, 'OK', '―');
+    renderMethodResult(true, method);
+  } else {
+    // 違う紙を読んだら、前に照合済みでも「未照合」に戻す（正しい紙を読み直させる）
+    localStorage.removeItem('mt');
+    logs.unshift({ result: 'ng', name: label, code: method.cp, time });
+    save();
+    setFeedback('ng');
+    logToSheet(label, method.cp, 'NG', '―');
+    renderMethodResult(false, method);
+  }
+}
+
+function renderMethodResult(ok, method) {
+  const head = ok ? `
+    <div class="result-card ok">
+      <span class="result-icon">📄</span>
+      <div class="result-title">製造方法 OK！</div>
+      <div class="result-name">${currentProduct.name}</div>
+      <div class="result-msg">製造指示書と製造方法のCP番号が一致しました<br>${method.cp}${method.rev ? ' ／ 改訂 ' + method.rev : ''}</div>
+    </div>` : `
+    <div class="result-card error">
+      <span class="result-icon">❌</span>
+      <div class="result-title">製造方法が違います！</div>
+      <div class="result-msg" style="text-align:left;display:inline-block;">
+        製造指示書：${normCp(currentProduct.code)}　${currentProduct.name}<br>
+        製造方法　：${method.cp}　${method.name}
+      </div>
+      <div class="result-msg" style="margin-top:8px;">正しい製造方法の紙を用意して、もう一度読んでください</div>
+    </div>`;
+
+  // 次に進むボタン（今の段階に合わせる）
+  let next;
+  if (getBatchKg() === null) next = `<button class="btn-complete" onclick="renderBatchInput()">生産量の入力へ進む</button>`;
+  else if (pendingCode) next = `<button class="btn-complete" onclick="closeWarning()">計量中の原料に戻る</button>`;
+  else next = '';
+
+  document.getElementById('app').innerHTML = `
+    ${head}
+    ${next}
+    ${renderProductCard()}
+    ${renderProgress()}
+    ${renderLog()}
+    <button class="btn-reset" onclick="goToStart()">↩️ 最初からやり直す</button>
+    <button class="btn-reset" onclick="resetAll()">🔄 リセット</button>
+  `;
+}
+
+function showMethodModal(icon, title, msg) {
+  document.getElementById('modal').innerHTML = `
+    <div class="modal-overlay">
+      <div class="modal">
+        <div class="modal-icon">${icon}</div>
+        <div class="modal-title">${title}</div>
+        <div class="modal-msg">${msg}</div>
+        <button class="modal-btn" onclick="document.getElementById('modal').innerHTML=''">OK</button>
+      </div>
+    </div>
+  `;
+}
+
+/* ─── handleCode を差し替え（製造方法QRの分岐を先頭に足す） ───── */
+const _handleCodeBeforeMethod = handleCode;
+handleCode = function (code) {
+  if (!code) return;
+  code = code.trim();
+
+  const method = parseMethodCode(code);
+  if (method) { handleMethodScan(method); return; }
+
+  // 製造方法を照合するまで原料QRを受け付けない（設定が true の時だけ）
+  if (REQUIRE_METHOD_CHECK && currentProduct && !methodOk() &&
+      !parseInstructionCode(code) && !parseManufacturerCode(code)) {
+    setFeedback('ng');
+    showMethodModal('📄', '製造方法のQRを先に読んでください', `「${currentProduct.name}」の製造方法の紙に貼ってあるQRを読んでから、原料をスキャンしてください`);
+    return;
+  }
+
+  _handleCodeBeforeMethod(code);
+};
+
+/* ─── 製品カードの下に「製造方法 照合済み／未照合」を出す ───── */
+const _renderProductCardBeforeMethod = renderProductCard;
+renderProductCard = function () {
+  const html = _renderProductCardBeforeMethod();
+  if (!currentProduct) return html;
+  const mt = getMethod();
+  const status = methodOk()
+    ? `<div class="method-status ok">📄 製造方法：照合済み${mt.rev ? '（改訂 ' + mt.rev + '）' : ''}</div>`
+    : `<div class="method-status ng">📄 製造方法：まだ照合していません — 製造方法のQRを読んでください</div>`;
+  return html + status;
+};
+
+/* ─── 最初の画面の手順に製造方法QRを足す ───── */
+const _renderProductScanBeforeMethod = renderProductScan;
+renderProductScan = function () {
+  _renderProductScanBeforeMethod();
+  const app = document.getElementById('app');
+  app.innerHTML = app.innerHTML.replace(
+    '4. 続けて原料のQRコードをスキャン',
+    '4. 製造方法のQRコードをスキャン（取り違え防止）<br>5. 続けて原料のQRコードをスキャン'
+  );
+};
+
+/* ─── 最初からやり直す時は製造方法の照合もクリア ───── */
+const _goToStartBeforeMethod = goToStart;
+goToStart = function () { localStorage.removeItem('mt'); _goToStartBeforeMethod(); };
+
+/* ═══════════ 製造方法QR照合パッチ（v4）ここまで ═══════════ */
+
+// ═══════════════════════════════════════════════════════════
 // スキャン高速化パッチ（v3）
 //
 // 直したこと：
@@ -1734,13 +1912,13 @@ renderWait = function () {
    ★★★ 直したら APP_VERSION も必ず新しくすること ★★★
    このすぐ下の行です。変え忘れると現場の端末が更新されません。
    ══════════════════════════════════════════════════════ */
-const APP_VERSION = 'v3.9 (2026-09-05)';
+const APP_VERSION = 'v4.0 (2026-10-29)';
 
 /* ─── 版数の表示 ───────────────────────────────────────
    端末が古いページをキャッシュしていないか、目で確かめるための表示。 */
 (function () {
   const el = document.getElementById('appVer');
-  if (el) el.textContent = APP_VERSION + ' ／ 製造者QR対応';
+  if (el) el.textContent = APP_VERSION + ' ／ 製造者QR・製造方法QR対応';
 })();
 
 /* ─── 自動更新 ─────────────────────────────────────────
